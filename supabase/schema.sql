@@ -1,4 +1,4 @@
--- Row Closet database setup.
+-- Swap Row database setup.
 -- Paste this whole file into Supabase → SQL Editor → New query, and run it once.
 --
 -- How student-only access is enforced (none of it relies on the website's own code):
@@ -66,7 +66,7 @@ create or replace function public.enforce_student_email()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if new.email is null or public.university_for_email(new.email) is null then
-    raise exception 'Row Closet is for students only. Sign up with your university email.'
+    raise exception 'Swap Row is for students only. Sign up with your university email.'
       using errcode = 'check_violation';
   end if;
   return new;

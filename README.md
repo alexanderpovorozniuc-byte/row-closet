@@ -1,8 +1,8 @@
-# Row Closet
+# Swap Row
 
 A buy-and-sell marketplace for students in Greek life. Only verified students can join, and each student only sees listings from their own university.
 
-- **University of Alabama** students sign in with **myBama**: Row Closet sends them to Microsoft, which hands `@crimson.ua.edu` accounts to UA's own login page. Row Closet never sees their password.
+- **University of Alabama** students sign in with **myBama**: Swap Row sends them to Microsoft, which hands `@crimson.ua.edu` accounts to UA's own login page. Swap Row never sees their password.
 - **Other universities** sign in with a 6-digit code sent to their school email.
 - **The database enforces the student-only rule**, so the website can't be bypassed. Sign-ups from any email outside the approved school domains are rejected before the account is created. Staff `@ua.edu` addresses are rejected too, because only `@crimson.ua.edu` counts for UA.
 
@@ -26,19 +26,19 @@ A buy-and-sell marketplace for students in Greek life. Only verified students ca
 
 1. **Authentication → Sign In / Providers → Email**: keep it enabled.
 2. **Authentication → Email Templates → Magic Link**: add the code to the email body, for example:
-   `<p>Your Row Closet code is <strong>{{ .Token }}</strong></p>`
+   `<p>Your Swap Row code is <strong>{{ .Token }}</strong></p>`
    Do the same for the **Confirm signup** template.
 3. Supabase's built-in email sender only sends a few emails an hour. Before launch, connect a real sender under **Authentication → Emails → SMTP Settings** (Resend and Postmark both have free tiers).
 
 ### 3. Turn on myBama sign-in for UA
 
-UA student accounts live in UA's Microsoft directory, which hands sign-in to UA's own login page. Row Closet uses Supabase's Microsoft (Azure) sign-in, locked to UA's directory, so only real UA accounts can get through.
+UA student accounts live in UA's Microsoft directory, which hands sign-in to UA's own login page. Swap Row uses Supabase's Microsoft (Azure) sign-in, locked to UA's directory, so only real UA accounts can get through.
 
 1. Find UA's directory ID by opening
    `https://login.microsoftonline.com/crimson.ua.edu/v2.0/.well-known/openid-configuration`
    in a browser. The `issuer` value looks like `https://login.microsoftonline.com/<directory-id>/v2.0`. Copy the `<directory-id>` part.
 2. In the [Azure portal](https://portal.azure.com), sign in with any personal Microsoft account. Go to **Microsoft Entra ID → App registrations → New registration**:
-   - **Name:** Row Closet
+   - **Name:** Swap Row
    - **Supported account types:** *Accounts in any organizational directory (Multitenant)*
    - **Redirect URI:** Web, `https://YOUR-PROJECT.supabase.co/auth/v1/callback`
 3. In the new app:
@@ -50,7 +50,7 @@ UA student accounts live in UA's Microsoft directory, which hands sign-in to UA'
    - **Azure Tenant URL:** `https://login.microsoftonline.com/<directory-id>` (the UA directory ID from step 1)
 5. Test it with your own `@crimson.ua.edu` account.
 
-**If you see "Need admin approval":** UA's IT office has to approve third-party apps before students can sign in to them. Contact UA OIT and ask them to grant admin consent for the "Row Closet" app, giving them its Application ID. Until then, UA students can still join with the **"Use an email code instead"** link, which sends a code to their `@crimson.ua.edu` inbox. Either way, only students get in.
+**If you see "Need admin approval":** UA's IT office has to approve third-party apps before students can sign in to them. Contact UA OIT and ask them to grant admin consent for the "Swap Row" app, giving them its Application ID. Until then, UA students can still join with the **"Use an email code instead"** link, which sends a code to their `@crimson.ua.edu` inbox. Either way, only students get in.
 
 ### 4. Put it online
 
@@ -81,4 +81,4 @@ Double-check each school's *student* email domain before adding it. Some schools
 
 ## Upgrading to UA's Okta directly
 
-A deeper integration registers Row Closet as an app in UA's own Okta. This would let the UA login screen show "Row Closet" by name and let UA turn access off centrally. It needs UA OIT to set up the app on their side and Supabase's SAML single sign-on, which is on the Pro plan. The Microsoft route above gets students the same myBama login screen without either of those.
+A deeper integration registers Swap Row as an app in UA's own Okta. This would let the UA login screen show "Swap Row" by name and let UA turn access off centrally. It needs UA OIT to set up the app on their side and Supabase's SAML single sign-on, which is on the Pro plan. The Microsoft route above gets students the same myBama login screen without either of those.

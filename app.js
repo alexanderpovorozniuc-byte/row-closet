@@ -17,7 +17,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return el;
 };
 
-const CFG = window.ROW_CLOSET_CONFIG || {};
+const CFG = window.SWAP_ROW_CONFIG || {};
 const configured = !!CFG.supabaseUrl && !CFG.supabaseUrl.includes("YOUR-PROJECT") && !!window.supabase;
 const sb = configured ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
   auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true },
@@ -46,7 +46,7 @@ function friendlyAuthError(msg = "") {
   if (/database error|students only|saving new user/i.test(msg))
     return "That account isn't a student email we recognize. Sign in with your university email.";
   if (/admin|consent|approval/i.test(msg))
-    return "Your school's login needs IT approval for Row Closet first. Use an email code for now.";
+    return "Your school's login needs IT approval for Swap Row first. Use an email code for now.";
   if (/rate|too many/i.test(msg)) return "Too many tries. Wait a minute, then try again.";
   if (/expired|invalid/i.test(msg)) return "That code didn't work or has expired. Request a new one.";
   return msg || "Something went wrong signing in. Try again.";
@@ -75,7 +75,7 @@ function choose(uni, forceEmail = false) {
   $("#codePanel").hidden = true;
   if (sso) {
     $("#ssoBtn").textContent = `Continue with ${uni.sso_label || uni.short_name + " login"}`;
-    $("#ssoNote").textContent = `You'll sign in on ${uni.short_name}'s own login page with your @${uni.email_domains[0]} account. Row Closet never sees your password.`;
+    $("#ssoNote").textContent = `You'll sign in on ${uni.short_name}'s own login page with your @${uni.email_domains[0]} account. Swap Row never sees your password.`;
   } else {
     $("#email").placeholder = `you@${uni.email_domains[0]}`;
     $("#emailNote").textContent = `Use your @${uni.email_domains.join(" or @")} address. We'll email you a 6-digit code.`;
