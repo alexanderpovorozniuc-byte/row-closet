@@ -35,7 +35,8 @@ insert into public.universities (id, name, short_name, email_domains, sso_provid
   ('utk',     'University of Tennessee',       'Tennessee',   '{vols.utk.edu}',                  null, null, 10),
   ('uark',    'University of Arkansas',        'Arkansas',    '{uark.edu}',                      null, null, 10),
   ('uky',     'University of Kentucky',        'Kentucky',    '{uky.edu}',                       null, null, 10),
-  ('sc',      'University of South Carolina',  'South Carolina', '{email.sc.edu}',               null, null, 10)
+  ('sc',      'University of South Carolina',  'South Carolina', '{email.sc.edu}',               null, null, 10),
+  ('ucf',     'University of Central Florida', 'UCF',         '{ucf.edu}',                       null, null, 10)
 on conflict (id) do nothing;
 update public.universities set sso_label = 'myBama' where id = 'ua' and sso_label is null;
 
