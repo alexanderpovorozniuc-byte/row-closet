@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Row Closet</title>
+<meta name="description" content="Buy and sell outfits with students in Greek life at your university.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>body { margin: 0; } [hidden] { display: none !important; } img { max-width: 100%; }</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <div class="brand"><h1>Row<span>Closet</span></h1><small id="tagline">Buy · Sell</small></div>
+    <div class="who" id="who" hidden></div>
+    <button class="btn primary" id="listBtn" type="button" hidden>+ List an item</button>
+  </div>
+</header>
+
+<!-- Signed out: pick a university, then verify -->
+<main class="wrap" id="gate" hidden>
+  <div class="gate">
+    <h2>The closet for your whole row.</h2>
+    <p>Buy and sell date party, formal and game day outfits with other students in Greek life. Only verified students at your school can see listings.</p>
+
+    <span class="step-label">Where do you go to school?</span>
+    <div id="featured"></div>
+    <div class="or">or</div>
+    <label class="field"><span>Another university</span><select id="schoolSel"></select></label>
+
+    <div class="panel" id="ssoPanel" hidden>
+      <button class="btn primary" id="ssoBtn" type="button">Continue with myBama</button>
+      <span class="fine" id="ssoNote"></span>
+      <button class="linkish" id="useCode" type="button">Use an email code instead</button>
+    </div>
+
+    <form class="panel" id="emailPanel" hidden novalidate>
+      <label class="field"><span>Your school email</span><input id="email" type="email" autocomplete="email" inputmode="email" required></label>
+      <button class="btn primary" id="sendBtn" type="submit">Email me a sign-in code</button>
+      <span class="fine" id="emailNote"></span>
+      <button class="linkish" id="backToSso" type="button" hidden>Back to myBama sign-in</button>
+    </form>
+
+    <form class="panel" id="codePanel" hidden novalidate>
+      <p id="codeSentTo"></p>
+      <label class="field"><span>6-digit code</span><input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required></label>
+      <button class="btn primary" id="verifyBtn" type="submit">Sign in</button>
+      <button class="linkish" id="restart" type="button">Use a different email</button>
+    </form>
+
+    <span class="err" id="gateErr" role="alert"></span>
+  </div>
+</main>
+
+<!-- Signed in: first-time profile -->
+<main class="wrap" id="onboard" hidden>
+  <form class="gate" id="profileForm" novalidate>
+    <h2>Set up your closet</h2>
+    <p>Buyers see this on your listings. Only verified students at your school can see it.</p>
+    <label class="field"><span>First name</span><input id="pf-name" type="text" maxlength="40" autocomplete="given-name" required></label>
+    <label class="field"><span>Chapter</span><input id="pf-chapter" type="text" maxlength="60" placeholder="e.g. Alpha Chi Omega"></label>
+    <label class="field"><span>How buyers reach you</span><input id="pf-contact" type="text" maxlength="80" placeholder="IG @yourhandle or text 205-555-…" required></label>
+    <span class="err" id="pfErr" role="alert"></span>
+    <button class="btn primary" type="submit">Start shopping</button>
+  </form>
+</main>
+
+<!-- Signed in: the marketplace -->
+<main class="wrap" id="market" hidden>
+  <section class="intro">
+    <h2>Never re-wear the date party dress.</h2>
+    <p id="introText">Buy outfits from people on the row, and sell the ones you're done with. Filter by the event you're dressing for, then message the seller to meet up on campus.</p>
+  </section>
+  <nav class="chips" id="eventChips" aria-label="Filter by event"></nav>
+  <div class="filters">
+    <input class="search" id="q" type="search" placeholder="Search “white dress”, “cowboy boots”, “neon”…" aria-label="Search listings">
+    <select id="fCat" aria-label="Category"></select>
+    <select id="fSize" aria-label="Size"></select>
+  </div>
+  <div class="meta">
+    <span id="count">Loading the rack…</span>
+    <div class="views" role="group" aria-label="Show">
+      <button class="btn on" type="button" data-view="all">Everything</button>
+      <button class="btn" type="button" data-view="saved">Saved</button>
+      <button class="btn" type="button" data-view="mine">My closet</button>
+    </div>
+  </div>
+  <section class="rack" id="rack" aria-live="polite"></section>
+</main>
+
+<main class="wrap" id="setupMsg" hidden>
+  <div class="gate">
+    <h2>Almost there</h2>
+    <p>Add your Supabase project URL and anon key to <code>config.js</code>, then reload. The README walks through it.</p>
+  </div>
+</main>
+
+<dialog id="detail"></dialog>
+<dialog id="editor"></dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
