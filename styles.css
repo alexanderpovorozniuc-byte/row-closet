@@ -217,3 +217,9 @@ dialog.thread[open] { display: flex; flex-direction: column; }
   .bar .btn { padding: 7px 12px; font-size: 14px; }
   .who b { display: none; }
 }
+
+/* AI photo auto-fill */
+.ai-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn.ai { border-color: var(--rent); color: var(--rent); background: var(--rent-soft); }
+.btn.ai:hover { border-color: var(--rent); filter: brightness(1.03); }
+.ai-note { color: var(--rent); font-weight: 600; flex: 1 1 220px; }

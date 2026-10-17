@@ -5,6 +5,7 @@ A buy-and-sell marketplace for students in Greek life. Only verified students ca
 - **University of Alabama** students sign in with **myBama**: Swap Row sends them to Microsoft, which hands `@crimson.ua.edu` accounts to UA's own login page. Swap Row never sees their password.
 - **Other universities** sign in with a 6-digit code sent to their school email.
 - **Buyers and sellers chat inside the app.** Each listing has a Message seller button, and chats are private to the two students in them. New messages show up live, with an unread count on the Messages button.
+- **Photo auto-fill with Gemma.** After adding a photo, sellers can tap **✨ Fill in from photo** and Google's Gemma model suggests the title, category, condition, events, description and price. Students review everything before posting.
 - **The database enforces the student-only rule**, so the website can't be bypassed. Sign-ups from any email outside the approved school domains are rejected before the account is created. Staff `@ua.edu` addresses are rejected too, because only `@crimson.ua.edu` counts for UA.
 
 ## What's in here
@@ -64,6 +65,21 @@ The site is static files, so any static host works:
 Then, in Supabase, go to **Authentication → URL Configuration**. Set **Site URL** to your live address and add it under **Redirect URLs**.
 
 To try it on your computer first, run `npx serve .` in this folder and add `http://localhost:3000` to the Redirect URLs.
+
+## Photo auto-fill with Gemma (optional)
+
+The **✨ Fill in from photo** button sends the listing's cover photo to Google's **Gemma** model (`gemma-4-26b-a4b-it` by default) through a small server function, so your Google key never reaches the browser. Each student gets 20 auto-fills a day.
+
+1. **Get a Google AI Studio key.** Go to https://aistudio.google.com/apikey, sign in with a Google account and click **Create API key**. The free tier is enough to start.
+2. **Create the function.** In Supabase, go to **Edge Functions → Deploy a new function → Via Editor**. Name it `autofill`, replace the sample code with everything in `supabase/functions/autofill/index.ts`, and click **Deploy**.
+3. **Turn off the built-in JWT check.** Open the `autofill` function's **Details** or **Settings** and turn off **Verify JWT** ("Enforce JWT verification"). The function checks the student's sign-in itself, and the built-in check can reject the newer Supabase keys.
+4. **Add the key.** Go to **Edge Functions → Secrets** and add `GEMINI_API_KEY` with your key. Optional extra secrets:
+   - `GEMMA_MODEL` to use a different Gemma model, for example `gemma-4-31b-it`
+   - `AI_DAILY_LIMIT` to change the daily limit per student
+5. **Re-run `supabase/schema.sql`** in the SQL Editor. It adds the table that tracks each student's daily limit.
+6. **Turn the button on.** In `config.js`, set `aiAutofill: true` and commit.
+
+Photos sent for auto-fill go to Google's Gemini API for processing.
 
 ## Updating the database
 

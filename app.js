@@ -322,7 +322,10 @@ function openEditor(existing) {
 
   const upWrap = h("div", { class: "uploads" });
   const fileIn = h("input", { type: "file", id: "ed-file", accept: "image/*", multiple: true, hidden: true });
+  const aiBtn = h("button", { class: "btn ai", type: "button", hidden: true, onclick: () => aiFill() }, "✨ Fill in from photo");
+  const aiNote = h("small", { class: "ai-note", role: "status", hidden: true });
   function drawUploads() {
+    aiBtn.hidden = !CFG.aiAutofill || !photos.length || uploading > 0;
     upWrap.replaceChildren(
       ...photos.map((p, i) => { const img = h("img", { alt: "" }); img.src = p.url; return h("div", { class: "u" }, img, h("button", { type: "button", "aria-label": "Remove photo", onclick: () => { photos.splice(i, 1); drawUploads(); } }, "✕")); }),
       ...Array.from({ length: uploading }, () => h("div", { class: "u" }, "Uploading…")),
@@ -349,7 +352,8 @@ function openEditor(existing) {
   const saveBtn = h("button", { class: "btn primary", type: "submit" }, existing ? "Save changes" : "Post listing");
   const form = h("form", { class: "sheet", novalidate: true },
     h("div", { class: "sheet-head" }, h("h2", {}, existing ? "Edit listing" : "List an item"), h("button", { class: "x", type: "button", "aria-label": "Close", onclick: () => dlg.close() }, "✕")),
-    h("div", { class: "field" }, h("span", {}, "Photos (up to 4)"), upWrap, fileIn, h("small", {}, "Good light, full-length if it's a dress. The first photo is the cover.")),
+    h("div", { class: "field" }, h("span", {}, "Photos (up to 4)"), upWrap, fileIn, h("small", {}, "Good light, full-length if it's a dress. The first photo is the cover."),
+      h("div", { class: "ai-row" }, aiBtn, aiNote)),
     h("label", { class: "field" }, h("span", {}, "Title"), h("input", { id: "ed-title", type: "text", maxlength: "90", required: true, placeholder: "Red satin slip dress, midi", value: it.title })),
     h("div", { class: "grid2" },
       h("label", { class: "field" }, h("span", {}, "Category"), sel("ed-cat", CATS.map(c => [c, c]), it.cat)),
@@ -364,6 +368,45 @@ function openEditor(existing) {
       h("label", { class: "field" }, h("span", {}, "How buyers reach you"), h("input", { id: "ed-contact", type: "text", maxlength: "80", placeholder: "IG @yourhandle or text 205-555-…", value: S.profile.contact }), h("small", {}, `Shown on your listings to verified ${S.uni.short_name} students.`))),
     h("div", { class: "formfoot" }, err, saveBtn));
   dlg.replaceChildren(form);
+
+  // Ask Gemma (through the autofill server function) to suggest listing details from the cover photo.
+  // Fills only what the student hasn't already filled in; they review everything before posting.
+  async function aiFill() {
+    aiBtn.disabled = true; aiBtn.textContent = "Looking at your photo…"; aiNote.hidden = true;
+    try {
+      const cover = await (await fetch(photos[0].url)).blob();
+      const image = await blobToBase64(await shrink(cover, 768));
+      const { data, error } = await sb.functions.invoke("autofill", { body: { image } });
+      if (error) {
+        let code = ""; try { code = (await error.context.json()).error; } catch {}
+        throw new Error(code || "ai_unavailable");
+      }
+      const $f = id => $("#" + id, form);
+      const filled = [];
+      if (data.title && !$f("ed-title").value.trim()) { $f("ed-title").value = data.title; filled.push("title"); }
+      if (data.category) { $f("ed-cat").value = data.category; filled.push("category"); }
+      if (data.size && !$f("ed-size").value) { $f("ed-size").value = data.size; filled.push("size"); }
+      if (data.condition) { $f("ed-cond").value = data.condition; filled.push("condition"); }
+      if (data.price && !$f("ed-price").value) { $f("ed-price").value = data.price; filled.push("price"); }
+      const boxes = [...form.querySelectorAll(".pickset input")];
+      if (data.events?.length && !boxes.some(b => b.checked)) { boxes.forEach(b => b.checked = data.events.includes(b.value)); filled.push("events"); }
+      if (data.description && !$f("ed-desc").value.trim()) { $f("ed-desc").value = data.description; filled.push("details"); }
+      aiNote.textContent = filled.length
+        ? "✨ Suggested by AI. Check everything, especially size and price, before posting."
+        : "Everything was already filled in, so nothing changed.";
+      aiNote.hidden = false;
+    } catch (e) {
+      const msg = {
+        not_clothing: "That photo doesn't look like clothing or an accessory. Try a clearer photo of the item.",
+        daily_limit: "You've used photo auto-fill a lot today. Fill this one in yourself, or try again tomorrow.",
+        ai_busy: "The AI is busy right now. Try again in a minute.",
+        not_configured: "Photo auto-fill isn't set up yet.",
+      }[e.message] || "Couldn't read that photo right now. You can still fill the listing in yourself.";
+      aiNote.textContent = msg; aiNote.hidden = false;
+    }
+    aiBtn.disabled = false; aiBtn.textContent = "✨ Fill in from photo";
+  }
+
   // Clean up photos uploaded for a listing that was never saved.
   dlg.addEventListener("close", () => { if (added.length && !form.dataset.saved) sb.storage.from(BUCKET).remove(added); }, { once: true });
 
@@ -399,13 +442,20 @@ function openEditor(existing) {
 $("#listBtn").addEventListener("click", () => openEditor());
 
 /* Downscale phone photos and convert to JPEG before upload so the rack loads fast. */
-async function shrink(file) {
+async function shrink(file, max = 1400) {
   const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("encode")), "image/jpeg", 0.85));
 }
+
+const blobToBase64 = blob => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(",")[1]);
+  r.onerror = rej;
+  r.readAsDataURL(blob);
+});
 
 /* ---------- messages ---------- */
 const M = { convs: [], names: {}, open: null, msgs: [], channel: null, poll: null };

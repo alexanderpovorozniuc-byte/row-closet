@@ -328,3 +328,33 @@ begin
     end if;
   end if;
 end $$;
+
+-- ---------- AI photo auto-fill ----------
+-- Counts auto-fill requests per student per day so nobody can drain the shared Gemma quota.
+-- Only the server function (service role) touches this; students have no access.
+create table if not exists public.ai_usage (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  day     date not null default current_date,
+  count   int  not null default 0,
+  primary key (user_id, day)
+);
+alter table public.ai_usage enable row level security;
+revoke all on public.ai_usage from anon, authenticated;
+
+-- Adds one use for today and says whether the student is still under the limit.
+create or replace function public.bump_ai_usage(p_user uuid, p_limit int)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  insert into public.ai_usage (user_id, day, count) values (p_user, current_date, 1)
+  on conflict (user_id, day) do update set count = public.ai_usage.count + 1
+  returning count into n;
+  delete from public.ai_usage where day < current_date - 7;
+  return n <= p_limit;
+end $$;
+revoke all on function public.bump_ai_usage(uuid, int) from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.bump_ai_usage(uuid, int) to service_role;
+  end if;
+end $$;
