@@ -54,15 +54,11 @@ function friendlyAuthError(msg = "") {
 }
 
 function renderGate() {
-  const featured = S.universities.filter(u => u.priority === 0);
-  const others = S.universities.filter(u => u.priority !== 0).sort((a, b) => a.name.localeCompare(b.name));
-  $("#featured").replaceChildren(...featured.map(u => h("button", {
-    class: "school", type: "button", "aria-pressed": String(S.choice?.id === u.id), onclick: () => choose(u),
-  }, h("span", { class: "mark", "aria-hidden": "true" }, u.short_name[0]), h("strong", {}, u.name),
-     h("small", {}, u.sso_label && S.providers[u.sso_provider] === true ? `Sign in with ${u.sso_label} · @${u.email_domains[0]}` : `@${u.email_domains[0]}`))));
+  // One list: featured schools (lowest priority number) first, then the rest A–Z.
+  const schools = [...S.universities].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
   const sel = $("#schoolSel");
-  sel.replaceChildren(h("option", { value: "" }, "Pick your school"), ...others.map(u => h("option", { value: u.id }, u.name)));
-  sel.value = S.choice && S.choice.priority !== 0 ? S.choice.id : "";
+  sel.replaceChildren(h("option", { value: "", disabled: true }, "Pick your school"), ...schools.map(u => h("option", { value: u.id }, u.name)));
+  sel.value = S.choice?.id || "";
 }
 $("#schoolSel").addEventListener("change", e => { const u = S.universities.find(x => x.id === e.target.value); if (u) choose(u); });
 
