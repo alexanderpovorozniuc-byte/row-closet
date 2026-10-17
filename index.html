@@ -16,6 +16,7 @@
   <div class="wrap">
     <div class="brand"><h1>Swap<span>Row</span></h1><small id="tagline">Buy · Sell</small></div>
     <div class="who" id="who" hidden></div>
+    <button class="btn" id="msgBtn" type="button" hidden aria-label="Messages">Messages <span class="count" id="msgBadge" hidden></span></button>
     <button class="btn primary" id="listBtn" type="button" hidden>+ List an item</button>
   </div>
 </header>
@@ -91,6 +92,15 @@
   <section class="rack" id="rack" aria-live="polite"></section>
 </main>
 
+<!-- Signed in: messages -->
+<main class="wrap" id="inbox" hidden>
+  <div class="inbox-head">
+    <button class="linkish" id="backToMarket" type="button">← Back to the rack</button>
+    <h2>Messages</h2>
+  </div>
+  <section class="convs" id="convList" aria-live="polite"></section>
+</main>
+
 <main class="wrap" id="setupMsg" hidden>
   <div class="gate">
     <h2>Almost there</h2>
@@ -100,6 +110,7 @@
 
 <dialog id="detail"></dialog>
 <dialog id="editor"></dialog>
+<dialog id="thread" class="thread"></dialog>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>

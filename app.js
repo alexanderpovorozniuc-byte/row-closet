@@ -35,7 +35,7 @@ const persistSaved = () => { try { localStorage.setItem("rc-saved", JSON.stringi
 
 let toastT;
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2800); }
-function show(id) { for (const s of ["gate", "onboard", "market", "setupMsg"]) $("#" + s).hidden = s !== id; }
+function show(id) { for (const s of ["gate", "onboard", "market", "inbox", "setupMsg"]) $("#" + s).hidden = s !== id; }
 
 /* ---------- sign in ---------- */
 const domainOf = email => (email.split("@")[1] || "").toLowerCase();
@@ -129,7 +129,7 @@ $("#restart").addEventListener("click", () => choose(S.choice, true));
 async function route() {
   const { data: { session } } = await sb.auth.getSession();
   S.session = session;
-  if (!session) { S.profile = null; renderHeader(); show("gate"); if (S.choice) choose(S.choice); else renderGate(); return; }
+  if (!session) { S.profile = null; stopMessaging(); renderHeader(); show("gate"); if (S.choice) choose(S.choice); else renderGate(); return; }
   const { data: profile, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   if (error || !profile) {
     await sb.auth.signOut();
@@ -140,12 +140,12 @@ async function route() {
   S.uni = S.universities.find(u => u.id === profile.university_id) || { id: profile.university_id, short_name: profile.university_id, name: profile.university_id };
   renderHeader();
   if (!profile.display_name || !profile.contact) { fillProfileForm(); show("onboard"); return; }
-  show("market"); buildFilters(); render(); loadListings();
+  show("market"); buildFilters(); render(); loadListings(); startMessaging();
 }
 
 function renderHeader() {
   const signedIn = !!(S.session && S.profile);
-  $("#who").hidden = !signedIn; $("#listBtn").hidden = !signedIn || !S.profile?.display_name;
+  $("#who").hidden = !signedIn; $("#listBtn").hidden = $("#msgBtn").hidden = !signedIn || !S.profile?.display_name;
   if (!signedIn) return;
   $("#who").replaceChildren(
     h("span", { class: "badge", title: `Verified ${S.uni.name} student` }, "✓ " + S.uni.short_name),
@@ -188,7 +188,11 @@ async function loadListings() {
   S.loaded = true; render();
   const dlg = $("#detail"); if (dlg.open && dlg.dataset.id) openDetail(dlg.dataset.id);
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden && S.profile && !$("#market").hidden) loadListings(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !S.profile?.display_name) return;
+  if (!$("#market").hidden) loadListings();
+  loadConversations(); if (M.open) refreshThread();
+});
 
 /* ---------- formatting ---------- */
 const priceText = it => `$${it.price}`;
@@ -303,11 +307,10 @@ function openDetail(id, photoIdx = 0) {
         mine ? h("div", { class: "contact" },
             h("div", { class: "label" }, "Listing status"), h("div", { class: "owner-actions" }, statusBtns),
             h("div", { class: "owner-actions" }, h("button", { class: "btn primary", type: "button", onclick: () => { dlg.close(); openEditor(it); } }, "Edit listing"), delBtn))
-          : it.contact ? h("div", { class: "contact" },
-            h("div", { class: "label" }, "Reach the seller"),
-            h("div", { class: "handle" }, it.contact),
-            h("div", { class: "row" }, copyBtn, h("small", { style: "color:var(--muted)" }, "Meet somewhere public on campus. Pay when you see it.")))
-          : h("div", { class: "contact" }, h("div", { class: "label" }, "Seller hasn't added contact info yet"))))));
+          : h("div", { class: "contact" },
+            h("button", { class: "btn primary", type: "button", onclick: e => messageSeller(it.id, e.currentTarget) }, existingChat(it.id) ? "Open chat" : "Message seller"),
+            it.contact ? [h("div", { class: "label" }, "Or reach them at"), h("div", { class: "row" }, h("span", { class: "handle" }, it.contact), copyBtn)] : null,
+            h("small", { style: "color:var(--muted)" }, "Meet somewhere public on campus. Pay when you see it."))))));
   if (!dlg.open) dlg.showModal();
 }
 
@@ -402,6 +405,171 @@ async function shrink(file) {
   const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("encode")), "image/jpeg", 0.85));
+}
+
+/* ---------- messages ---------- */
+const M = { convs: [], names: {}, open: null, msgs: [], channel: null, poll: null };
+const otherId = c => c.buyer_id === S.profile.id ? c.seller_id : c.buyer_id;
+const myLastRead = c => c.buyer_id === S.profile.id ? c.buyer_last_read : c.seller_last_read;
+const isUnread = c => !!c.last_sender_id && c.last_sender_id !== S.profile.id && (!myLastRead(c) || new Date(c.last_message_at) > new Date(myLastRead(c)));
+const existingChat = listingId => M.convs.find(c => c.listing_id === listingId && c.buyer_id === S.profile.id);
+const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const fmtWhen = iso => sameDay(iso, Date.now()) ? fmtTime(iso) : new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+
+function startMessaging() {
+  loadConversations();
+  if (M.channel) return;
+  // Live delivery; the database rules only send this user their own chats.
+  M.channel = sb.channel("inbox")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, ({ new: m }) => onNewMessage(m))
+    .subscribe();
+  // Backup in case live updates are blocked on this network.
+  M.poll = setInterval(() => { if (!document.hidden) { loadConversations(); if (M.open) refreshThread(); } }, 20000);
+}
+function stopMessaging() {
+  if (M.channel) sb.removeChannel(M.channel);
+  clearInterval(M.poll);
+  Object.assign(M, { convs: [], open: null, msgs: [], channel: null, poll: null });
+  if ($("#thread").open) $("#thread").close();
+  renderBadge();
+}
+
+async function loadConversations() {
+  if (!S.profile) return;
+  const { data, error } = await sb.from("conversations")
+    .select("*, listing:listings(photos, price, status)")
+    .order("last_message_at", { ascending: false }).limit(200);
+  if (error) return;
+  M.convs = data;
+  const missing = [...new Set(data.map(otherId))].filter(id => !(id in M.names));
+  if (missing.length) {
+    const { data: ps } = await sb.from("profiles").select("id, display_name").in("id", missing);
+    for (const p of ps || []) M.names[p.id] = p.display_name;
+  }
+  renderBadge();
+  if (!$("#inbox").hidden) renderInbox();
+}
+
+function renderBadge() {
+  const n = S.profile ? M.convs.filter(isUnread).length : 0;
+  $("#msgBadge").hidden = !n; $("#msgBadge").textContent = n;
+  $("#msgBtn").setAttribute("aria-label", n ? `Messages, ${n} unread` : "Messages");
+}
+
+function renderInbox() {
+  const list = $("#convList");
+  if (!M.convs.length) {
+    list.replaceChildren(h("div", { class: "empty" }, h("h3", {}, "No messages yet"),
+      h("p", {}, "Tap “Message seller” on any listing to ask about size, fit or pickup. Buyers who message you about your listings show up here too.")));
+    return;
+  }
+  list.replaceChildren(...M.convs.map(c => {
+    const photo = c.listing?.photos?.[0];
+    const thumb = h("span", { class: "thumb", "aria-hidden": "true" });
+    if (photo) { const img = h("img", { alt: "" }); img.src = photoUrl(photo); thumb.append(img); } else thumb.append(c.listing_title[0] || "?");
+    const unread = isUnread(c);
+    const selling = c.seller_id === S.profile.id;
+    return h("button", { class: "conv" + (unread ? " unread" : ""), type: "button", onclick: () => openThread(c.id) },
+      thumb,
+      h("span", { style: "min-width:0" },
+        h("span", { class: "who" }, M.names[otherId(c)] || "A student"),
+        h("span", { class: "what" }, (selling ? "Your listing · " : "") + c.listing_title),
+        h("span", { class: "last" }, c.last_message ? (c.last_sender_id === S.profile.id ? "You: " : "") + c.last_message : "No messages yet")),
+      h("span", { class: "when" }, c.last_message ? fmtWhen(c.last_message_at) : "", unread ? h("span", { class: "dot", "aria-label": "Unread" }) : null));
+  }));
+}
+
+function showInbox() { $("#detail").open && $("#detail").close(); show("inbox"); renderInbox(); loadConversations(); }
+$("#msgBtn").addEventListener("click", showInbox);
+$("#backToMarket").addEventListener("click", () => { show("market"); render(); });
+
+async function messageSeller(listingId, btn) {
+  if (btn) btn.disabled = true;
+  const { data, error } = await sb.rpc("start_conversation", { p_listing: listingId });
+  if (btn) btn.disabled = false;
+  if (error) return toast("Couldn't open the chat. Try again");
+  $("#detail").close();
+  await loadConversations();
+  openThread(data);
+}
+
+async function openThread(convId) {
+  M.open = convId; M.msgs = [];
+  drawThread(true);
+  await refreshThread();
+  markRead(convId);
+}
+async function refreshThread() {
+  const id = M.open; if (!id) return;
+  const { data, error } = await sb.from("messages").select("*").eq("conversation_id", id).order("created_at").limit(500);
+  if (error || M.open !== id) return;
+  const changed = data.length !== M.msgs.length;
+  M.msgs = data;
+  if (changed) { renderThreadMsgs(); if (data.at(-1)?.sender_id !== S.profile.id) markRead(id); }
+}
+async function markRead(convId) {
+  await sb.rpc("mark_conversation_read", { p_conversation: convId });
+  const c = M.convs.find(x => x.id === convId);
+  if (c) { c[c.buyer_id === S.profile.id ? "buyer_last_read" : "seller_last_read"] = new Date().toISOString(); renderBadge(); if (!$("#inbox").hidden) renderInbox(); }
+}
+function onNewMessage(m) {
+  if (m.conversation_id === M.open && !M.msgs.some(x => x.id === m.id)) {
+    M.msgs.push(m); renderThreadMsgs();
+    if (m.sender_id !== S.profile.id) markRead(m.conversation_id);
+  }
+  loadConversations();
+}
+
+function drawThread(fresh) {
+  const dlg = $("#thread"); const c = M.convs.find(x => x.id === M.open); if (!c) return;
+  const listing = c.listing_id && S.listings.find(l => l.id === c.listing_id);
+  const sub = [c.listing_title, c.listing?.price ? `$${c.listing.price}` : null, c.listing?.status === "sold" ? "Sold" : c.listing_id ? null : "Listing removed"].filter(Boolean).join(" · ");
+  const input = h("textarea", { id: "thread-input", rows: "1", maxlength: "1000", placeholder: "Message", "aria-label": "Message" });
+  const send = h("button", { class: "btn primary", type: "submit" }, "Send");
+  const form = h("form", { class: "composer" }, input, send);
+  const grow = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px"; };
+  input.addEventListener("input", grow);
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); form.requestSubmit(); } });
+  form.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const body = input.value.trim(); if (!body) return;
+    send.disabled = true;
+    const { data, error } = await sb.from("messages").insert({ conversation_id: c.id, body }).select().single();
+    send.disabled = false;
+    if (error) return toast("Message didn't send. Try again");
+    input.value = ""; grow(); input.focus();
+    if (!M.msgs.some(x => x.id === data.id)) { M.msgs.push(data); renderThreadMsgs(); }
+    loadConversations();
+  });
+  dlg.replaceChildren(
+    h("div", { class: "thread-head" },
+      h("button", { class: "x", type: "button", "aria-label": "Close chat", onclick: () => dlg.close() }, "←"),
+      h("div", { class: "t" }, h("strong", {}, M.names[otherId(c)] || "A student"), h("small", {}, sub)),
+      listing ? h("button", { class: "btn", type: "button", onclick: () => { dlg.close(); openDetail(listing.id); } }, "View") : null),
+    h("div", { class: "msgs", id: "msgs" }),
+    form);
+  renderThreadMsgs();
+  if (fresh) {
+    if (c.buyer_id === S.profile.id && !c.last_message) input.value = `Hi! Is the ${c.listing_title} still available?`;
+    if (!dlg.open) dlg.showModal();
+    grow(); input.focus();
+  }
+}
+$("#thread").addEventListener("close", () => { M.open = null; M.msgs = []; });
+
+function renderThreadMsgs() {
+  const box = $("#msgs"); if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  if (!M.msgs.length) { box.replaceChildren(h("p", { class: "hint" }, "Ask about fit, condition or a pickup spot. Keep payment for when you meet in person.")); return; }
+  const out = []; let prev = null;
+  for (const m of M.msgs) {
+    if (!prev || !sameDay(prev.created_at, m.created_at)) out.push(h("div", { class: "day" }, sameDay(m.created_at, Date.now()) ? "Today" : new Date(m.created_at).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })));
+    out.push(h("div", { class: "bubble " + (m.sender_id === S.profile.id ? "me" : "them") }, m.body, h("time", {}, fmtTime(m.created_at))));
+    prev = m;
+  }
+  box.replaceChildren(...out);
+  if (atBottom || box.dataset.init !== M.open) { box.scrollTop = box.scrollHeight; box.dataset.init = M.open; }
 }
 
 /* ---------- boot ---------- */

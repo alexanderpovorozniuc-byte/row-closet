@@ -193,3 +193,138 @@ drop policy if exists "students delete own photos" on storage.objects;
 create policy "students delete own photos" on storage.objects
   for delete to authenticated
   using (bucket_id = 'listing-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ---------- messaging ----------
+-- One conversation per buyer per listing. Only the buyer and seller can read it.
+-- Chats survive if the listing is deleted, so the title is kept as a snapshot.
+create table if not exists public.conversations (
+  id               uuid primary key default gen_random_uuid(),
+  listing_id       uuid references public.listings (id) on delete set null,
+  listing_title    text not null,
+  buyer_id         uuid not null references public.profiles (id) on delete cascade,
+  seller_id        uuid not null references public.profiles (id) on delete cascade,
+  university_id    text not null references public.universities (id),
+  created_at       timestamptz not null default now(),
+  last_message_at  timestamptz not null default now(),
+  last_message     text not null default '',
+  last_sender_id   uuid,
+  buyer_last_read  timestamptz,
+  seller_last_read timestamptz,
+  unique (listing_id, buyer_id)
+);
+create index if not exists conversations_buyer  on public.conversations (buyer_id, last_message_at desc);
+create index if not exists conversations_seller on public.conversations (seller_id, last_message_at desc);
+
+create table if not exists public.messages (
+  id              uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations (id) on delete cascade,
+  sender_id       uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  body            text not null check (char_length(btrim(body)) between 1 and 1000),
+  created_at      timestamptz not null default now()
+);
+create index if not exists messages_conversation_created on public.messages (conversation_id, created_at);
+
+create or replace function public.is_participant(p_conversation uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.conversations c
+                 where c.id = p_conversation and auth.uid() in (c.buyer_id, c.seller_id))
+$$;
+
+-- Open (or reopen) the chat about a listing. Only classmates can message, and not about their own listing.
+create or replace function public.start_conversation(p_listing uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare l public.listings; conv uuid;
+begin
+  select * into l from public.listings where id = p_listing;
+  if l.id is null or l.university_id is distinct from public.my_university() then
+    raise exception 'Listing not found.' using errcode = 'no_data_found';
+  end if;
+  if l.seller_id = auth.uid() then
+    raise exception 'You can''t message yourself about your own listing.' using errcode = 'check_violation';
+  end if;
+  insert into public.conversations (listing_id, listing_title, buyer_id, seller_id, university_id, buyer_last_read)
+  values (l.id, l.title, auth.uid(), l.seller_id, l.university_id, now())
+  on conflict (listing_id, buyer_id) do update set listing_title = excluded.listing_title
+  returning id into conv;
+  return conv;
+end $$;
+
+-- Mark a chat as read up to now, for whichever side the caller is on.
+create or replace function public.mark_conversation_read(p_conversation uuid)
+returns void language sql security definer set search_path = public as $$
+  update public.conversations set
+    buyer_last_read  = case when buyer_id  = auth.uid() then now() else buyer_last_read  end,
+    seller_last_read = case when seller_id = auth.uid() then now() else seller_last_read end
+  where id = p_conversation and auth.uid() in (buyer_id, seller_id)
+$$;
+
+-- Messages always come from the signed-in user, stamped with the server's clock.
+create or replace function public.stamp_message()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.sender_id := auth.uid();
+  new.created_at := now();
+  new.body := btrim(new.body);
+  return new;
+end $$;
+
+drop trigger if exists stamp_message on public.messages;
+create trigger stamp_message before insert on public.messages
+  for each row execute function public.stamp_message();
+
+-- Keep the inbox preview and unread state current.
+create or replace function public.bump_conversation()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update public.conversations set
+    last_message_at  = new.created_at,
+    last_message     = left(new.body, 140),
+    last_sender_id   = new.sender_id,
+    buyer_last_read  = case when buyer_id  = new.sender_id then new.created_at else buyer_last_read  end,
+    seller_last_read = case when seller_id = new.sender_id then new.created_at else seller_last_read end
+  where id = new.conversation_id;
+  return new;
+end $$;
+
+drop trigger if exists bump_conversation on public.messages;
+create trigger bump_conversation after insert on public.messages
+  for each row execute function public.bump_conversation();
+
+alter table public.conversations enable row level security;
+alter table public.messages      enable row level security;
+
+drop policy if exists "participants see conversations" on public.conversations;
+create policy "participants see conversations" on public.conversations
+  for select to authenticated using (auth.uid() in (buyer_id, seller_id));
+
+drop policy if exists "participants see messages" on public.messages;
+create policy "participants see messages" on public.messages
+  for select to authenticated using (public.is_participant(conversation_id));
+
+drop policy if exists "participants send messages" on public.messages;
+create policy "participants send messages" on public.messages
+  for insert to authenticated
+  with check (sender_id = auth.uid() and public.is_participant(conversation_id));
+
+revoke all on public.conversations from anon, authenticated;
+revoke all on public.messages      from anon, authenticated;
+grant select on public.conversations to authenticated;
+grant select on public.messages to authenticated;
+grant insert (conversation_id, body) on public.messages to authenticated;
+revoke all on function public.start_conversation(uuid)      from public, anon;
+revoke all on function public.mark_conversation_read(uuid)  from public, anon;
+grant execute on function public.start_conversation(uuid)     to authenticated;
+grant execute on function public.mark_conversation_read(uuid) to authenticated;
+
+-- Live updates: new messages show up without refreshing.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages') then
+      alter publication supabase_realtime add table public.messages;
+    end if;
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'conversations') then
+      alter publication supabase_realtime add table public.conversations;
+    end if;
+  end if;
+end $$;

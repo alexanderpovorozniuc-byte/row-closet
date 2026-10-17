@@ -4,6 +4,7 @@ A buy-and-sell marketplace for students in Greek life. Only verified students ca
 
 - **University of Alabama** students sign in with **myBama**: Swap Row sends them to Microsoft, which hands `@crimson.ua.edu` accounts to UA's own login page. Swap Row never sees their password.
 - **Other universities** sign in with a 6-digit code sent to their school email.
+- **Buyers and sellers chat inside the app.** Each listing has a Message seller button, and chats are private to the two students in them. New messages show up live, with an unread count on the Messages button.
 - **The database enforces the student-only rule**, so the website can't be bypassed. Sign-ups from any email outside the approved school domains are rejected before the account is created. Staff `@ua.edu` addresses are rejected too, because only `@crimson.ua.edu` counts for UA.
 
 ## What's in here
@@ -63,6 +64,10 @@ The site is static files, so any static host works:
 Then, in Supabase, go to **Authentication → URL Configuration**. Set **Site URL** to your live address and add it under **Redirect URLs**.
 
 To try it on your computer first, run `npx serve .` in this folder and add `http://localhost:3000` to the Redirect URLs.
+
+## Updating the database
+
+When `supabase/schema.sql` changes (for example, when messaging was added), paste the whole file into **SQL Editor** again and run it. It's safe to re-run: it keeps existing accounts, listings and messages, and only adds what's new.
 
 ## Managing it
 
