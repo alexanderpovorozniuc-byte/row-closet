@@ -24,7 +24,7 @@ const sb = configured ? window.supabase.createClient(CFG.supabaseUrl, CFG.supaba
 }) : null;
 
 const S = {
-  universities: [], choice: null, pendingEmail: "",
+  universities: [], providers: {}, choice: null, pendingEmail: "",
   session: null, profile: null, uni: null,
   listings: [], loaded: false,
   view: "all", event: "", q: "", cat: "", size: "",
@@ -58,7 +58,7 @@ function renderGate() {
   $("#featured").replaceChildren(...featured.map(u => h("button", {
     class: "school", type: "button", "aria-pressed": String(S.choice?.id === u.id), onclick: () => choose(u),
   }, h("span", { class: "mark", "aria-hidden": "true" }, u.short_name[0]), h("strong", {}, u.name),
-     h("small", {}, u.sso_label ? `Sign in with ${u.sso_label} · @${u.email_domains[0]}` : `@${u.email_domains[0]}`))));
+     h("small", {}, u.sso_label && S.providers[u.sso_provider] === true ? `Sign in with ${u.sso_label} · @${u.email_domains[0]}` : `@${u.email_domains[0]}`))));
   const sel = $("#schoolSel");
   sel.replaceChildren(h("option", { value: "" }, "Pick your school"), ...others.map(u => h("option", { value: u.id }, u.name)));
   sel.value = S.choice && S.choice.priority !== 0 ? S.choice.id : "";
@@ -67,7 +67,9 @@ $("#schoolSel").addEventListener("change", e => { const u = S.universities.find(
 
 function choose(uni, forceEmail = false) {
   S.choice = uni; gateErr(""); renderGate();
-  const sso = uni.sso_provider && !forceEmail;
+  // Only offer school SSO once it is switched on in Supabase; otherwise go straight to email codes.
+  const ssoReady = !!uni.sso_provider && S.providers[uni.sso_provider] === true;
+  const sso = ssoReady && !forceEmail;
   $("#ssoPanel").hidden = !sso;
   $("#emailPanel").hidden = sso;
   $("#codePanel").hidden = true;
@@ -77,7 +79,7 @@ function choose(uni, forceEmail = false) {
   } else {
     $("#email").placeholder = `you@${uni.email_domains[0]}`;
     $("#emailNote").textContent = `Use your @${uni.email_domains.join(" or @")} address. We'll email you a 6-digit code.`;
-    $("#backToSso").hidden = !uni.sso_provider;
+    $("#backToSso").hidden = !ssoReady;
     $("#email").focus();
   }
 }
@@ -411,6 +413,11 @@ async function shrink(file) {
 
   const { data } = await sb.from("universities").select("*").order("priority").order("name");
   S.universities = data || [];
+  // Which sign-in providers are switched on (e.g. { azure: true }). Unknown → treated as off.
+  try {
+    const r = await fetch(CFG.supabaseUrl + "/auth/v1/settings", { headers: { apikey: CFG.supabaseAnonKey } });
+    if (r.ok) S.providers = (await r.json()).external || {};
+  } catch {}
   // Default the picker to the featured school.
   const featured = S.universities.find(u => u.priority === 0);
   if (featured) S.choice = featured;
