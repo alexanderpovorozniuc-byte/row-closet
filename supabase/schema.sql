@@ -116,6 +116,12 @@ create table if not exists public.listings (
 );
 create index if not exists listings_university_created on public.listings (university_id, created_at desc);
 
+-- Party themes (Oktoberfest, Barn Dance / Western, …), added after launch.
+alter table public.listings add column if not exists themes text[] not null default '{}';
+do $$ begin
+  alter table public.listings add constraint listings_themes_max check (cardinality(themes) <= 6);
+exception when duplicate_object then null; end $$;
+
 -- A listing always belongs to its seller's university, whatever the client sends.
 create or replace function public.stamp_listing()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -173,8 +179,8 @@ grant select on public.universities to anon, authenticated;
 grant select on public.profiles to authenticated;
 grant update (display_name, chapter, contact) on public.profiles to authenticated;
 grant select, delete on public.listings to authenticated;
-grant insert (title, category, size, condition, price, events, description, photos, status) on public.listings to authenticated;
-grant update (title, category, size, condition, price, events, description, photos, status) on public.listings to authenticated;
+grant insert (title, category, size, condition, price, events, themes, description, photos, status) on public.listings to authenticated;
+grant update (title, category, size, condition, price, events, themes, description, photos, status) on public.listings to authenticated;
 
 -- ---------- photo storage ----------
 -- Public bucket: photo URLs are unguessable, and listings themselves stay students-only.

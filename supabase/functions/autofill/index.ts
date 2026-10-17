@@ -7,6 +7,7 @@
 //   AI_DAILY_LIMIT   optional, auto-fills per student per day, defaults to 20
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
+const THEMES = ["Oktoberfest", "USA / Red, White & Blue", "Barn Dance / Western", "Country Club", "Kentucky Derby", "Neon / Glow", "Y2K", "'70s Disco", "'80s", "'90s", "Mardi Gras", "Tropical / Luau", "Beach / Coastal", "Après Ski", "Toga", "Masquerade", "White Party", "Black & White", "Halloween"];
 const EVENTS = ["Date Party", "Formal", "Semi-Formal", "Game Day", "Bid Day", "Rush / Recruitment", "Philanthropy", "Theme Party", "Big/Little", "Everyday"];
 const CATS = ["Dress", "Top", "Bottoms", "Set / Jumpsuit", "Shoes", "Accessories", "Jewelry", "Costume", "Outerwear", "Other"];
 const SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "0", "2", "4", "6", "8", "10", "12", "14", "Shoe 5", "Shoe 6", "Shoe 7", "Shoe 8", "Shoe 9", "Shoe 10", "One size"];
@@ -32,6 +33,7 @@ Look at the photo and reply with ONLY one JSON object, no other text, with exact
 - "size": one of ${JSON.stringify(SIZES)} ONLY if a size tag is clearly readable in the photo, otherwise "".
 - "condition": one of ${JSON.stringify(CONDS)}. Use "Gently used" if you can't tell.
 - "events": 1 to 3 values from ${JSON.stringify(EVENTS)} that this item would suit.
+- "themes": 0 to 3 values from ${JSON.stringify(THEMES)} whose party theme this item clearly fits (for example a flannel or cowboy boots for "Barn Dance / Western", a dirndl for "Oktoberfest"). Use [] if none clearly fit.
 - "description": 1 or 2 short sentences on color, fabric, fit and style. Do not guess a brand or size you can't see. Do not mention price.
 - "price": a fair price in whole US dollars for this item used, as a number.
 If the photo does not show clothing, shoes, jewelry or an accessory, reply with {"error":"not_clothing"}.`;
@@ -63,6 +65,7 @@ function sanitize(raw: any) {
     size: pick(raw.size, SIZES),
     condition: pick(raw.condition, CONDS),
     events: [...new Set((Array.isArray(raw.events) ? raw.events : []).map((e: unknown) => pick(e, EVENTS)).filter(Boolean))].slice(0, 3),
+    themes: [...new Set((Array.isArray(raw.themes) ? raw.themes : []).map((t: unknown) => pick(t, THEMES)).filter(Boolean))].slice(0, 3),
     description: str(raw.description, 600),
     price: price >= 1 && price <= 9999 ? price : null,
   };

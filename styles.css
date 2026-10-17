@@ -65,11 +65,11 @@ button { cursor: pointer; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 14px; white-space: nowrap; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 8px; padding-block: 10px; }
+.filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 8px; padding-block: 10px; }
 .filters input, .filters select, .field input, .field select, .field textarea {
   width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px 12px; min-width: 0;
 }
-@media (max-width: 640px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filters .search { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filters .search, .filters #fTheme { grid-column: 1 / -1; } }
 .meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; padding-block: 4px 12px; flex-wrap: wrap; }
 .views { display: flex; gap: 6px; }
 .views .btn { padding: 6px 12px; font-size: 13px; }

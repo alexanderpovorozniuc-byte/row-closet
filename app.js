@@ -1,3 +1,4 @@
+const THEMES = ["Oktoberfest", "USA / Red, White & Blue", "Barn Dance / Western", "Country Club", "Kentucky Derby", "Neon / Glow", "Y2K", "'70s Disco", "'80s", "'90s", "Mardi Gras", "Tropical / Luau", "Beach / Coastal", "Après Ski", "Toga", "Masquerade", "White Party", "Black & White", "Halloween"];
 const EVENTS = ["Date Party", "Formal", "Semi-Formal", "Game Day", "Bid Day", "Rush / Recruitment", "Philanthropy", "Theme Party", "Big/Little", "Everyday"];
 const CATS = ["Dress", "Top", "Bottoms", "Set / Jumpsuit", "Shoes", "Accessories", "Jewelry", "Costume", "Outerwear", "Other"];
 const SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "0", "2", "4", "6", "8", "10", "12", "14", "Shoe 5", "Shoe 6", "Shoe 7", "Shoe 8", "Shoe 9", "Shoe 10", "One size"];
@@ -27,7 +28,7 @@ const S = {
   universities: [], providers: {}, choice: null, pendingEmail: "",
   session: null, profile: null, uni: null,
   listings: [], loaded: false,
-  view: "all", event: "", q: "", cat: "", size: "",
+  view: "all", event: "", q: "", cat: "", size: "", theme: "",
   saved: new Set(),
 };
 try { S.saved = new Set(JSON.parse(localStorage.getItem("rc-saved") || "[]")); } catch {}
@@ -173,7 +174,7 @@ const photoUrl = path => sb.storage.from(BUCKET).getPublicUrl(path).data.publicU
 function normalize(r) {
   return {
     id: r.id, seller: r.seller_id, title: r.title, cat: r.category, size: r.size, cond: r.condition, price: r.price,
-    events: r.events || [], desc: r.description, status: r.status, createdAt: Date.parse(r.created_at) || 0,
+    events: r.events || [], themes: r.themes || [], desc: r.description, status: r.status, createdAt: Date.parse(r.created_at) || 0,
     photos: (r.photos || []).map(path => ({ path, url: photoUrl(path) })),
     name: r.seller?.display_name || "", chapter: r.seller?.chapter || "", contact: r.seller?.contact || "",
   };
@@ -210,11 +211,13 @@ function buildFilters() {
   const opts = (sel, first, list) => { const cur = sel.value; sel.replaceChildren(h("option", { value: "" }, first), ...list.map(v => h("option", { value: v }, v))); sel.value = cur; };
   opts($("#fCat"), "Any category", CATS);
   opts($("#fSize"), "Any size", SIZES);
+  opts($("#fTheme"), "Any theme", THEMES);
   $("#introText").textContent = `Buy outfits from people on the row at ${S.uni.short_name}, and sell the ones you're done with. Filter by the event you're dressing for, then message the seller to meet up on campus.`;
 }
 $("#q").addEventListener("input", e => { S.q = e.target.value.trim().toLowerCase(); render(); });
 $("#fCat").addEventListener("change", e => { S.cat = e.target.value; render(); });
 $("#fSize").addEventListener("change", e => { S.size = e.target.value; render(); });
+$("#fTheme").addEventListener("change", e => { S.theme = e.target.value; render(); });
 document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => {
   S.view = b.dataset.view;
   document.querySelectorAll("[data-view]").forEach(x => x.classList.toggle("on", x === b));
@@ -230,13 +233,14 @@ function render() {
   if (S.event) items = items.filter(i => i.events.includes(S.event));
   if (S.cat) items = items.filter(i => i.cat === S.cat);
   if (S.size) items = items.filter(i => i.size === S.size);
-  if (S.q) items = items.filter(i => [i.title, i.desc, i.cat, i.chapter, ...i.events].join(" ").toLowerCase().includes(S.q));
+  if (S.theme) items = items.filter(i => i.themes.includes(S.theme));
+  if (S.q) items = items.filter(i => [i.title, i.desc, i.cat, i.chapter, ...i.events, ...i.themes].join(" ").toLowerCase().includes(S.q));
 
   const total = S.listings.filter(i => i.status !== "sold").length;
   $("#count").textContent = !S.loaded ? "Loading the rack…" : `${items.length} shown · ${total} available at ${S.uni.short_name}`;
 
   if (!items.length) {
-    const filtered = S.event || S.cat || S.size || S.q;
+    const filtered = S.event || S.cat || S.size || S.theme || S.q;
     const empty = !S.loaded ? h("div", { class: "empty" }, h("h3", {}, "Loading…"))
       : S.view === "mine" ? h("div", { class: "empty" }, h("h3", {}, "Your closet is empty"), h("p", {}, "List the dress you wore once to formal, the boots from the western date party, or the jersey from game day."), h("button", { class: "btn primary", type: "button", onclick: () => openEditor() }, "+ List your first item"))
       : S.view === "saved" ? h("div", { class: "empty" }, h("h3", {}, "Nothing saved yet"), h("p", {}, "Tap the heart on any listing to keep it here."))
@@ -302,6 +306,7 @@ function openDetail(id, photoIdx = 0) {
           it.cat ? [h("dt", {}, "Type"), h("dd", {}, it.cat)] : null,
           it.cond ? [h("dt", {}, "Condition"), h("dd", {}, it.cond)] : null,
           it.events.length ? [h("dt", {}, "Good for"), h("dd", {}, it.events.join(", "))] : null,
+          it.themes.length ? [h("dt", {}, "Themes"), h("dd", {}, it.themes.join(", "))] : null,
           [h("dt", {}, "From"), h("dd", {}, sellerName(it) + (it.chapter ? " · " + it.chapter : ""))]),
         it.desc ? h("p", { class: "desc" }, it.desc) : null,
         mine ? h("div", { class: "contact" },
@@ -317,7 +322,7 @@ function openDetail(id, photoIdx = 0) {
 /* ---------- editor ---------- */
 function openEditor(existing) {
   const dlg = $("#editor");
-  const it = existing ? { ...existing, photos: [...existing.photos] } : { id: "", title: "", cat: "Dress", size: "", cond: "Worn once", price: "", events: [], desc: "", photos: [], status: "available" };
+  const it = existing ? { ...existing, photos: [...existing.photos] } : { id: "", title: "", cat: "Dress", size: "", cond: "Worn once", price: "", events: [], themes: [], desc: "", photos: [], status: "available" };
   const photos = it.photos.slice(); const added = []; let uploading = 0;
 
   const upWrap = h("div", { class: "uploads" });
@@ -361,7 +366,10 @@ function openEditor(existing) {
       h("label", { class: "field" }, h("span", {}, "Condition"), sel("ed-cond", CONDS.map(c => [c, c]), it.cond)),
       h("label", { class: "field" }, h("span", {}, "Price ($)"), h("input", { id: "ed-price", type: "number", min: "1", max: "9999", step: "1", inputmode: "numeric", placeholder: "25", value: it.price === "" ? "" : String(it.price) }))),
     h("fieldset", { class: "field", style: "border:0;padding:0;margin:0" }, h("span", {}, "Good for"),
-      h("div", { class: "pickset" }, EVENTS.map((e, i) => h("label", {}, h("input", { type: "checkbox", id: "ed-ev-" + i, value: e, checked: it.events.includes(e) }), h("span", {}, e))))),
+      h("div", { class: "pickset events" }, EVENTS.map((e, i) => h("label", {}, h("input", { type: "checkbox", id: "ed-ev-" + i, value: e, checked: it.events.includes(e) }), h("span", {}, e))))),
+    h("fieldset", { class: "field", style: "border:0;padding:0;margin:0" }, h("span", {}, "Themes"),
+      h("div", { class: "pickset themes" }, THEMES.map((t, i) => h("label", {}, h("input", { type: "checkbox", id: "ed-th-" + i, value: t, checked: it.themes.includes(t) }), h("span", {}, t)))),
+      h("small", {}, "Pick up to 6 party themes this works for.")),
     h("label", { class: "field" }, h("span", {}, "Details"), h("textarea", { id: "ed-desc", rows: "3", maxlength: "1200", placeholder: "Brand, fit notes, pickup spot, whether you'll hold it for a few days…" }, it.desc)),
     h("div", { class: "grid2" },
       h("label", { class: "field" }, h("span", {}, "Your chapter"), h("input", { id: "ed-chapter", type: "text", maxlength: "60", placeholder: "e.g. Alpha Chi Omega", value: S.profile.chapter })),
@@ -388,8 +396,10 @@ function openEditor(existing) {
       if (data.size && !$f("ed-size").value) { $f("ed-size").value = data.size; filled.push("size"); }
       if (data.condition) { $f("ed-cond").value = data.condition; filled.push("condition"); }
       if (data.price && !$f("ed-price").value) { $f("ed-price").value = data.price; filled.push("price"); }
-      const boxes = [...form.querySelectorAll(".pickset input")];
+      const boxes = [...form.querySelectorAll(".pickset.events input")];
       if (data.events?.length && !boxes.some(b => b.checked)) { boxes.forEach(b => b.checked = data.events.includes(b.value)); filled.push("events"); }
+      const themeBoxes = [...form.querySelectorAll(".pickset.themes input")];
+      if (data.themes?.length && !themeBoxes.some(b => b.checked)) { themeBoxes.forEach(b => b.checked = data.themes.includes(b.value)); filled.push("themes"); }
       if (data.description && !$f("ed-desc").value.trim()) { $f("ed-desc").value = data.description; filled.push("details"); }
       aiNote.textContent = filled.length
         ? "✨ Suggested by AI. Check everything, especially size and price, before posting."
@@ -415,12 +425,14 @@ function openEditor(existing) {
     const v = id => $("#" + id, form).value.trim();
     const title = v("ed-title"), price = Math.round(+v("ed-price") || 0), contact = v("ed-contact"), chapter = v("ed-chapter");
     if (!title) { err.textContent = "Add a title so people know what it is."; return; }
+    if ([...form.querySelectorAll(".pickset.themes input:checked")].length > 6) { err.textContent = "Pick up to 6 themes."; return; }
     if (!(price >= 1 && price <= 9999)) { err.textContent = "Add a price between $1 and $9,999."; return; }
     if (!contact) { err.textContent = "Add a way for buyers to reach you."; return; }
     if (uploading) { err.textContent = "Wait for photos to finish uploading."; return; }
     const row = {
       title, category: v("ed-cat"), size: v("ed-size"), condition: v("ed-cond"), price,
-      events: [...form.querySelectorAll(".pickset input:checked")].map(x => x.value),
+      events: [...form.querySelectorAll(".pickset.events input:checked")].map(x => x.value),
+      themes: [...form.querySelectorAll(".pickset.themes input:checked")].map(x => x.value),
       description: v("ed-desc"), photos: photos.map(p => p.path),
     };
     saveBtn.disabled = true; saveBtn.textContent = "Saving…";
